@@ -14,7 +14,7 @@ namespace FolderHash
     {
         class Options
         {
-            [Option('t', "threads", DefaultValue = 0, HelpText = "Number of threads to use in calculations. 0 = Optimal for your system")]
+            [Option('t', "threads", DefaultValue = 1, HelpText = "Number of threads to use in calculations. 0 = Number of cores")]
             public int Threads { get; set; }
 
             [Option('f', "folder", Required = true, HelpText = "Root folder for calculations")]
@@ -22,6 +22,12 @@ namespace FolderHash
 
             [Option('o', "output", HelpText = "File to write the report. If unspecified, it prints to console.")]
             public string OutputFile { get; set; }
+
+            [Option('m', "md5", DefaultValue = false, HelpText = "Perform MD5 analysis")]
+            public bool Md5 { get; set; }
+
+            [Option('r', "review-options", DefaultValue = false, HelpText = "Review the options set without running anything")]
+            public bool ReviewOptions { get; set; }
 
             [HelpOption]
             public string GetUsage()
@@ -31,18 +37,32 @@ namespace FolderHash
             }
         }
 
+        static void ReviewOptions(Options o)
+        {
+            Console.WriteLine("Threads:    {0}", o.Threads);
+            Console.WriteLine("Folder:     {0}", o.Folder);
+            Console.WriteLine("OutputFile: {0}", o.OutputFile);
+            Console.WriteLine("Md5:        {0}", o.Md5);
+            Console.WriteLine("Review:     {0}", o.ReviewOptions);
+        }
+
         static void Main(string[] args)
         {
             var options = new Options();
             if (CommandLine.Parser.Default.ParseArguments(args, options))
             {
+                if (options.ReviewOptions)
+                {
+                    ReviewOptions(options);
+                    return;
+                }
                 if (!Directory.Exists(options.Folder))
                 {
                     Console.WriteLine("That isn't a directory. Try again");
                     return;
                 }
 
-                new Program(options.Folder, options.Threads, options.OutputFile).run();
+                new Program(options.Folder, options.Threads, options.OutputFile, options.Md5).run();
             }
         }
 
@@ -50,12 +70,14 @@ namespace FolderHash
         private string folder;
         private int threadCount;
         private string outputFile;
+        private bool md5;
 
-        public Program(string folder, int threadCount, string outputFile)
+        public Program(string folder, int threadCount, string outputFile, bool md5)
         {
             this.folder = folder;
             this.threadCount = threadCount < 1 ? Environment.ProcessorCount : threadCount;
             this.outputFile = outputFile;
+            this.md5 = md5;
         }
 
         public void run()
@@ -63,6 +85,18 @@ namespace FolderHash
             Stopwatch timer = new Stopwatch();
             timer.Start();
             files = listAllFiles(folder);
+            if (!md5)
+            {
+                files.Sort();
+                using (StreamWriter writer = new StreamWriter(outputFile))
+                {
+                    foreach (string file in files)
+                    {
+                        writer.WriteLine(file.Substring(folder.Length));
+                    }
+                }
+                return;
+            }
             Distributor distributor = new Distributor(files, threadCount);
             List<Calculator> calculators = new List<Calculator>();
             List<Thread> threads = new List<Thread>();
